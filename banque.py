@@ -17,13 +17,14 @@ class BanqueDigitale:
             try:
                 with open(self.fichier, 'r') as f:
                     for line in f:
-                        num_compte, nom, prenom, telephone, solde, mot_de_passe = line.strip().split(';')
+                        num_compte, nom, prenom, telephone, solde, mot_de_passe, type_compte = line.strip().split(';')
                         self.comptes[num_compte] = {
                             'nom': nom,
                             'prenom': prenom,
                             'telephone': telephone,
                             'solde': float(solde),
-                            'mot_de_passe': mot_de_passe
+                            'mot_de_passe': mot_de_passe,
+                            'type_compte': type_compte
                         }
             except Exception as e:
                 print(f"Erreur lors du chargement des comptes : {e}")
@@ -33,7 +34,8 @@ class BanqueDigitale:
         try:
             with open(self.fichier, 'w') as f:
                 for num_compte, infos in self.comptes.items():
-                    f.write(f"{num_compte};{infos['nom']};{infos['prenom']};{infos['telephone']};{infos['solde']:.2f};{infos['mot_de_passe']}\n")
+                    f.write(f"{num_compte};{infos['nom']};{infos['prenom']};{infos['telephone']};"
+                            f"{infos['solde']:.2f};{infos['mot_de_passe']};{infos['type_compte']}\n")
         except Exception as e:
             print(f"Erreur lors de la sauvegarde des comptes : {e}")
 
@@ -59,10 +61,10 @@ class BanqueDigitale:
         return re.match(pattern, telephone) is not None
 
     def valider_mot_de_passe(self, mot_de_passe):
-        pattern = r"^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$"
+        pattern = r"^\d{4}$"
         return re.match(pattern, mot_de_passe) is not None
 
-    def create_compte(self, nom, prenom, telephone, mot_de_passe):
+    def create_compte(self, nom, prenom, telephone, mot_de_passe, type_compte, depot_initial=0):
         if not self.valider_nom(nom):
             return "Le nom doit contenir au moins 5 caractères."
         if not self.valider_prenom(prenom):
@@ -72,13 +74,17 @@ class BanqueDigitale:
         if not self.valider_mot_de_passe(mot_de_passe):
             return "Le mot de passe doit contenir au moins 8 caractères, une lettre, un chiffre et un caractère spécial."
 
+        if type_compte == "epargne" and depot_initial < 5000:
+            return "Un dépôt initial minimum de 5000 est requis pour un compte épargne."
+
         num_compte = self.generate_num_compte()
         mot_de_passe_hash = self.hasher_mot_de_passe(mot_de_passe)
         self.comptes[num_compte] = {
             'nom': nom,
             'prenom': prenom,
             'telephone': telephone,
-            'solde': 0.0,
+            'solde': depot_initial,
+            'type_compte': type_compte,
             'mot_de_passe': mot_de_passe_hash
         }
         self.sauvegarder_comptes()
@@ -101,21 +107,6 @@ class BanqueDigitale:
             return compte
         return None
 
-    def fermer_compte(self, num_compte):
-        compte = self.lire_compte(num_compte)
-        if compte:
-            compte['solde'] = 0.0
-            self.sauvegarder_comptes()
-            return compte
-        return None
-
-    def supprimer_compte(self, num_compte):
-        if num_compte in self.comptes:
-            del self.comptes[num_compte]
-            self.sauvegarder_comptes()
-            return True
-        return False
-
     def enregistrer_journal(self, message):
         """Enregistre un message dans le fichier journal."""
         try:
@@ -132,91 +123,26 @@ def main():
         try:
             choix = input("Que voulez-vous faire ? (1: Se connecter, 2: S'inscrire, 3: Quitter) : ")
             if choix == "1":
-                try:
-                    num_compte = input("Entrez votre numéro de compte : ")
-                    if not num_compte.isdigit():
-                        print("Le numéro de compte doit être un entier.")
-                        continue
-                    mot_de_passe = input("Entrez votre mot de passe : ")
-                    if banque.verifier_mot_de_passe(num_compte, mot_de_passe):
-                        print("Connexion réussie. Bienvenue !")
-                        while True:
-                            action = input("Que voulez-vous faire ? (1: Consulter solde, 2: Déposer, 3: Retirer, 4: Déconnexion) : ")
-                            if action == "1":
-                                if banque.verifier_mot_de_passe(num_compte, input("Confirmez votre mot de passe : ")):
-                                    compte = banque.lire_compte(num_compte)
-                                    print("Votre solde est de :", compte['solde'])
-                                else:
-                                    print("Mot de passe incorrect.")
-                            elif action == "2":
-                                montant = float(input("Entrez le montant à déposer : "))
-                                if montant > 0:
-                                    compte = banque.update_solde(num_compte, montant)
-                                    print("Nouveau solde :", compte['solde'])
-                                else:
-                                    print("Le montant doit être positif.")
-                            elif action == "3":
-                                if banque.verifier_mot_de_passe(num_compte, input("Confirmez votre mot de passe : ")):
-                                    montant = float(input("Entrez le montant à retirer : "))
-                                    compte = banque.update_solde(num_compte, -montant)
-                                    print("Nouveau solde :", compte['solde'])
-                                else:
-                                    print("Mot de passe incorrect.")
-                            elif action == "4":
-                                print("Déconnexion réussie.")
-                                break
-                            else:
-                                print("Option invalide.")
-                    else:
-                        print("Numéro de compte ou mot de passe incorrect.")
-                except ValueError:
-                    print("Entrée invalide.")
-            elif choix == "2":
-                print("Inscription")
-                nom, prenom, telephone, mot_de_passe = "", "", "", ""
-                # Validation du nom
-                while not banque.valider_nom(nom):
-                    nom = input("Entrez votre nom : ")
-                    if len(nom) < 5:
-                        print("Le nom doit contenir au moins 5 caractères. Veuillez réessayer.")
-
-                # Validation du prénom
-                while not banque.valider_prenom(prenom):
-                    prenom = input("Entrez votre prénom : ")
-                    if len(prenom) < 3:
-                        print("Le prénom doit contenir au moins 3 caractères. Veuillez réessayer.")
-
-                # Validation du téléphone
-                while not banque.valider_telephone(telephone):
-                    telephone = input("Entrez votre numéro de téléphone : ")
-                    if not banque.valider_telephone(telephone):
-                        print("Le numéro de téléphone doit commencer par +223 et contenir 8 chiffres. Veuillez réessayer.")
-
-                # Validation du mot de passe
-                while not banque.valider_mot_de_passe(mot_de_passe):
-                    mot_de_passe = input("Choisissez un mot de passe : ")
-                    if not banque.valider_mot_de_passe(mot_de_passe):
-                        print("Le mot de passe doit contenir au moins 8 caractères, une lettre, un chiffre et un caractère spécial. Veuillez réessayer.")
-
-                # Création du compte
-                resultat = banque.create_compte(nom, prenom, telephone, mot_de_passe)
-                if isinstance(resultat, str):
-                    print(resultat)
+                num_compte = input("Entrez votre numéro de compte : ")
+                mot_de_passe = input("Entrez votre mot de passe : ")
+                if banque.verifier_mot_de_passe(num_compte, mot_de_passe):
+                    print("Connexion réussie.")
                 else:
-                    print(f"Compte créé avec succès. Votre numéro de compte est : {resultat}")
-                    banque.enregistrer_journal(f"Création du compte {resultat} pour {nom} {prenom}")
-                    if input("Souhaitez-vous effectuer un dépôt initial ? (oui/non) : ").lower() == "oui":
-                        try:
-                            montant = float(input("Entrez le montant à déposer : "))
-                            if montant > 0:
-                                compte = banque.update_solde(resultat, montant)
-                                print("Dépôt effectué. Nouveau solde :", compte['solde'])
-                            else:
-                                print("Le montant doit être positif.")
-                        except ValueError:
-                            print("Montant invalide.")
+                    print("Numéro de compte ou mot de passe incorrect.")
+            elif choix == "2":
+                nom = input("Entrez votre nom : ")
+                prenom = input("Entrez votre prénom : ")
+                telephone = input("Entrez votre numéro de téléphone (+223xxxxxxxx) : ")
+                mot_de_passe = input("Choisissez un mot de passe : ")
+                type_compte = input("Type de compte (courant/epargne) : ").lower()
+                depot_initial = 0
+                if type_compte == "epargne":
+                    depot_initial = float(input("Entrez le dépôt initial (minimum 5000) : "))
+
+                resultat = banque.create_compte(nom, prenom, telephone, mot_de_passe, type_compte, depot_initial)
+                print(resultat if isinstance(resultat, str) else f"Compte créé avec succès : {resultat}")
             elif choix == "3":
-                print("Merci d'avoir utilisé la Banque Digitale. À bientôt !")
+                print("Merci d'avoir utilisé la Banque Digitale.")
                 break
             else:
                 print("Option invalide.")
@@ -225,3 +151,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
